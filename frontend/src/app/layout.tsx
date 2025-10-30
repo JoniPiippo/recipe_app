@@ -1,7 +1,8 @@
+// frontend/src/app/layout.tsx
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
+import { AuthProvider } from "@/contexts/AuthContext";
 import Header from "./components/headers";
-
 import "./globals.css";
 
 const geistSans = Geist({
@@ -15,8 +16,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Recipe App",
-  description: "Share and discover amazing recipes",
+  title: "RecipeShare - Share and Discover Amazing Recipes",
+  description: "Join our community to share, discover, and save delicious recipes from around the world",
 };
 
 export default function RootLayout({
@@ -24,7 +25,7 @@ export default function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
-return (
+  return (
     <html lang="en" className={`${geistSans.variable} ${geistMono.variable}`}>
       <head>
         <link
@@ -32,9 +33,11 @@ return (
           rel="stylesheet"
         />
       </head>
-      <body className="min-h-screen bg-background-dark text-text-main font-sans">
-        <Header />
-        {children}
+      <body className="min-h-screen bg-background-dark text-text-main font-sans antialiased">
+        <AuthProvider>
+          <Header />
+          <main>{children}</main>
+        </AuthProvider>
       </body>
     </html>
   );

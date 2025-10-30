@@ -1,11 +1,28 @@
+// frontend/src/app/recipe/[id]/page.tsx
 "use client";
 
-import { useState } from "react";
+import { useState, use } from "react";
 import Link from "next/link";
 import Image from "next/image";
+import { useRecipe } from "@/hooks/useRecipe";
+import { useComments } from "@/hooks/useComments";
+import { LoadingPage, ErrorPage } from "@/components/Loading";
+import { useAuth } from "@/contexts/AuthContext";
 
-export default function RecipeDetail() {
+export default function RecipeDetail({ params }: { params: Promise<{ id: string }> }) {
+  const resolvedParams = use(params);
+  const recipeId = parseInt(resolvedParams.id);
+  
+  const { user } = useAuth();
+  const { recipe, loading, error, toggleLike, toggleSave } = useRecipe(recipeId);
+  const { comments, addComment, deleteComment, refresh: refreshComments } = useComments(recipeId);
+  
   const [checkedIngredients, setCheckedIngredients] = useState<number[]>([]);
+  const [newComment, setNewComment] = useState("");
+  const [submittingComment, setSubmittingComment] = useState(false);
+
+  if (loading) return <LoadingPage message="Loading recipe..." />;
+  if (error || !recipe) return <ErrorPage message={error || "Recipe not found"} />;
 
   const toggleIngredient = (index: number) => {
     if (checkedIngredients.includes(index)) {
@@ -15,20 +32,30 @@ export default function RecipeDetail() {
     }
   };
 
-  const ingredients = [
-    "1 pound sweet Italian sausage",
-    "3/4 pound lean ground beef",
-    "1/2 cup minced onion",
-    "2 cloves garlic, crushed",
-    "1 (28 ounce) can crushed tomatoes",
-    "2 (6.5 ounce) cans canned tomato sauce",
-    "12 lasagna noodles",
-    "16 ounces ricotta cheese",
-  ];
+  const handleSubmitComment = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newComment.trim() || submittingComment) return;
+
+    setSubmittingComment(true);
+    const result = await addComment(newComment.trim());
+    
+    if (result.success) {
+      setNewComment("");
+      refreshComments();
+    }
+    setSubmittingComment(false);
+  };
+
+  const handleDeleteComment = async (commentId: number) => {
+    if (confirm("Delete this comment?")) {
+      await deleteComment(commentId);
+    }
+  };
+
+  const totalTime = recipe.prep_time + recipe.cook_time;
 
   return (
     <div className="relative flex min-h-screen w-full flex-col bg-background-dark text-text-main">
-
       <div className="px-4 md:px-20 lg:px-40 flex flex-1 justify-center py-10">
         <div className="layout-content-container flex flex-col max-w-6xl flex-1 gap-10">
           {/* Back Button */}
@@ -45,20 +72,23 @@ export default function RecipeDetail() {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-10">
             {/* Left Column - Image and Details */}
             <div className="flex flex-col gap-6">
-              {/* Image Carousel */}
-              <div
-                className="bg-cover bg-center flex flex-col justify-end overflow-hidden rounded-xl min-h-[480px]"
-                style={{
-                  backgroundImage:
-                    'linear-gradient(0deg, rgba(0, 0, 0, 0.6) 0%, rgba(0, 0, 0, 0) 40%), url("https://lh3.googleusercontent.com/aida-public/AB6AXuAheVUFkzaQoq5uPBbtzo7rZu_1K9bzP5ET19-zG0KSUy3IHYWjGyn543EooLeLlRc8FD9a4L3yHYEFBmrWT7FInIRfQhwZFObfKsacEhxDT_3BW6241E8ZD1JUAQyeFBjYEaOwMs4-2O59uUbPNpX1eGlmWd6V0baUNEe4_LzPzb0BQTcSC3_ZrFCCRmH4kj8LKmgJMeA8acU4SGa3OZXeHCcu-iHwMsDRmYxgpBTAFShrYzJPN84-mThsMB_GNIdZn6loCnCymLTR")',
-                }}
-              >
-                <div className="flex justify-center gap-2 p-5">
-                  <div className="size-2 rounded-full bg-text-main"></div>
-                  <div className="size-2 rounded-full bg-text-main opacity-50"></div>
-                  <div className="size-2 rounded-full bg-text-main opacity-50"></div>
-                  <div className="size-2 rounded-full bg-text-main opacity-50"></div>
-                </div>
+              {/* Image */}
+              <div className="relative aspect-video rounded-xl overflow-hidden bg-surface-dark">
+                {recipe.image_url ? (
+                  <Image
+                    src={recipe.image_url}
+                    alt={recipe.title}
+                    fill
+                    className="object-cover"
+                    priority
+                  />
+                ) : (
+                  <div className="w-full h-full flex items-center justify-center">
+                    <span className="material-symbols-outlined text-8xl text-text-dark-secondary">
+                      restaurant
+                    </span>
+                  </div>
+                )}
               </div>
 
               {/* Recipe Header */}
@@ -66,40 +96,44 @@ export default function RecipeDetail() {
                 <div className="flex flex-wrap justify-between gap-4 items-start">
                   <div className="flex min-w-72 flex-col gap-2">
                     <h1 className="text-4xl font-black leading-tight tracking-[-0.033em]">
-                      Classic Lasagna
+                      {recipe.title}
                     </h1>
                     <p className="text-text-dark-secondary text-base font-normal leading-normal">
-                      A rich and cheesy traditional lasagna that's perfect for a family
-                      dinner.
+                      {recipe.description}
                     </p>
                   </div>
                   <div className="flex items-center gap-2">
                     <div className="flex items-center text-text-main">
-                      {[1, 2, 3, 4].map((i) => (
-                        <span key={i} className="material-symbols-outlined text-primary">
-                          star
+                      {[1, 2, 3, 4, 5].map((star) => (
+                        <span
+                          key={star}
+                          className="material-symbols-outlined text-primary"
+                        >
+                          {star <= 4 ? "star" : "star_border"}
                         </span>
                       ))}
-                      <span className="material-symbols-outlined text-[#4d4d4d]">
-                        star
-                      </span>
                     </div>
-                    <p className="text-sm font-medium">(122 ratings)</p>
+                    <p className="text-sm font-medium">({recipe.likes_count} likes)</p>
                   </div>
                 </div>
 
                 {/* Author */}
                 <div className="flex items-center gap-4">
-                  <div
-                    className="bg-center bg-no-repeat aspect-square bg-cover rounded-full size-12"
-                    style={{
-                      backgroundImage:
-                        'url("https://lh3.googleusercontent.com/aida-public/AB6AXuB9W-A7wLqPEoI7Q5Dmxa7fT5di2SdvHO_y1p1ghSDgM4bIGtWu5jzgB09GKtVJbyDPfU7aeKUtcqsa2qBJXJUP1g9q-VyozNxT6UjIz3Qf2NgKFqvq_L0O82Nyoh9X3f5NHSbdnnqxFE9WBp-QED3w7_TIanHIp6la2r5VDrjvSBg3sRY1wGPxuskqTfEvDrlOstRa8p0cr0uTja__wTPULzMVrrIbn6JwsBcLTHF4FH6yM1ZCJVnXVDmnzt5xfqHfKmKosTAt48hd")',
-                    }}
-                  />
+                  <Link href={`/profile/${recipe.author.id}`}>
+                    <Image
+                      src={recipe.author.avatar || '/default-avatar.jpg'}
+                      alt={recipe.author.name}
+                      width={48}
+                      height={48}
+                      className="rounded-full object-cover"
+                    />
+                  </Link>
                   <div>
-                    <p className="font-bold">Maria Lopez</p>
-                    <Link href="/profile" className="text-primary text-sm font-medium">
+                    <p className="font-bold">{recipe.author.name}</p>
+                    <Link
+                      href={`/profile/${recipe.author.id}`}
+                      className="text-primary text-sm font-medium hover:underline"
+                    >
                       View Profile
                     </Link>
                   </div>
@@ -108,51 +142,86 @@ export default function RecipeDetail() {
 
               {/* Action Buttons */}
               <div className="flex flex-wrap justify-start gap-2">
-                {[
-                  { icon: "favorite_border", label: "Like" },
-                  { icon: "share", label: "Share" },
-                  { icon: "bookmark_border", label: "Save" },
-                  { icon: "print", label: "Print" },
-                ].map((action) => (
-                  <button
-                    key={action.label}
-                    className="flex items-center gap-2 bg-surface-dark py-2 px-3 rounded-full text-sm font-medium text-text-main hover:bg-surface-dark/70"
-                  >
-                    <span className="material-symbols-outlined text-lg">
-                      {action.icon}
-                    </span>
-                    <span>{action.label}</span>
-                  </button>
-                ))}
+                <button
+                  onClick={toggleLike}
+                  className={`flex items-center gap-2 py-2 px-3 rounded-full text-sm font-medium transition-all ${
+                    recipe.is_liked
+                      ? 'bg-primary/20 text-primary'
+                      : 'bg-surface-dark text-text-main hover:bg-surface-dark/70'
+                  }`}
+                >
+                  <span className="material-symbols-outlined text-lg">
+                    {recipe.is_liked ? 'favorite' : 'favorite_border'}
+                  </span>
+                  <span>{recipe.is_liked ? 'Liked' : 'Like'}</span>
+                </button>
+
+                <button className="flex items-center gap-2 bg-surface-dark py-2 px-3 rounded-full text-sm font-medium text-text-main hover:bg-surface-dark/70">
+                  <span className="material-symbols-outlined text-lg">share</span>
+                  <span>Share</span>
+                </button>
+
+                <button
+                  onClick={toggleSave}
+                  className={`flex items-center gap-2 py-2 px-3 rounded-full text-sm font-medium transition-all ${
+                    recipe.is_saved
+                      ? 'bg-primary/20 text-primary'
+                      : 'bg-surface-dark text-text-main hover:bg-surface-dark/70'
+                  }`}
+                >
+                  <span className="material-symbols-outlined text-lg">
+                    {recipe.is_saved ? 'bookmark' : 'bookmark_border'}
+                  </span>
+                  <span>{recipe.is_saved ? 'Saved' : 'Save'}</span>
+                </button>
+
+                <button className="flex items-center gap-2 bg-surface-dark py-2 px-3 rounded-full text-sm font-medium text-text-main hover:bg-surface-dark/70">
+                  <span className="material-symbols-outlined text-lg">print</span>
+                  <span>Print</span>
+                </button>
               </div>
 
               {/* Recipe Info Grid */}
-              <div className="grid grid-cols-2 border-t border-solid border-t-[#333333]">
-                <div className="flex flex-col gap-1 py-4 pr-2 border-b border-solid border-b-[#333333]">
+              <div className="grid grid-cols-2 border-t border-solid border-t-border-color">
+                <div className="flex flex-col gap-1 py-4 pr-2 border-b border-solid border-b-border-color">
                   <p className="text-text-dark-secondary text-sm font-normal leading-normal">
                     Prep time
                   </p>
-                  <p className="text-sm font-medium leading-normal">20 mins</p>
+                  <p className="text-sm font-medium leading-normal">{recipe.prep_time} mins</p>
                 </div>
-                <div className="flex flex-col gap-1 py-4 pl-2 border-b border-solid border-b-[#333333]">
+                <div className="flex flex-col gap-1 py-4 pl-2 border-b border-solid border-b-border-color">
                   <p className="text-text-dark-secondary text-sm font-normal leading-normal">
                     Cook time
                   </p>
-                  <p className="text-sm font-medium leading-normal">45 mins</p>
+                  <p className="text-sm font-medium leading-normal">{recipe.cook_time} mins</p>
                 </div>
                 <div className="flex flex-col gap-1 py-4 pr-2">
                   <p className="text-text-dark-secondary text-sm font-normal leading-normal">
                     Servings
                   </p>
-                  <p className="text-sm font-medium leading-normal">6-8</p>
+                  <p className="text-sm font-medium leading-normal">{recipe.servings}</p>
                 </div>
                 <div className="flex flex-col gap-1 py-4 pl-2">
                   <p className="text-text-dark-secondary text-sm font-normal leading-normal">
                     Difficulty
                   </p>
-                  <p className="text-sm font-medium leading-normal">Medium</p>
+                  <p className="text-sm font-medium leading-normal capitalize">{recipe.difficulty}</p>
                 </div>
               </div>
+
+              {/* Tags */}
+              {recipe.tags && recipe.tags.length > 0 && (
+                <div className="flex flex-wrap gap-2">
+                  {recipe.tags.map((tag, index) => (
+                    <span
+                      key={index}
+                      className="px-3 py-1 bg-primary/10 text-primary rounded-full text-sm font-medium"
+                    >
+                      {tag}
+                    </span>
+                  ))}
+                </div>
+              )}
             </div>
 
             {/* Right Column - Ingredients & Instructions */}
@@ -161,15 +230,17 @@ export default function RecipeDetail() {
               <div className="flex flex-col gap-4">
                 <h3 className="text-2xl font-bold">Ingredients</h3>
                 <ul className="space-y-3">
-                  {ingredients.map((ingredient, index) => (
+                  {recipe.ingredients.map((ingredient, index) => (
                     <li key={index} className="flex items-center gap-3">
                       <input
                         type="checkbox"
                         checked={checkedIngredients.includes(index)}
                         onChange={() => toggleIngredient(index)}
-                        className="form-checkbox rounded bg-surface-dark border-[#4d4d4d] text-primary focus:ring-primary/50"
+                        className="form-checkbox rounded bg-surface-dark border-border-color text-primary focus:ring-primary/50"
                       />
-                      <span className="text-base">{ingredient}</span>
+                      <span className="text-base">
+                        {ingredient.quantity} {ingredient.unit} {ingredient.name}
+                      </span>
                     </li>
                   ))}
                 </ul>
@@ -179,107 +250,95 @@ export default function RecipeDetail() {
               <div className="flex flex-col gap-4">
                 <h3 className="text-2xl font-bold">Instructions</h3>
                 <ol className="space-y-4 list-decimal list-inside text-text-main">
-                  <li>
-                    In a Dutch oven, cook sausage, ground beef, onion, and garlic over
-                    medium heat until well browned. Stir in crushed tomatoes, tomato
-                    sauce, tomato paste, and water. Season with sugar, basil, fennel
-                    seeds, Italian seasoning, 1 teaspoon salt, pepper, and 2 tablespoons
-                    parsley. Simmer, covered, for about 1 1/2 hours, stirring
-                    occasionally.
-                  </li>
-                  <li>
-                    Bring a large pot of lightly salted water to a boil. Cook lasagna
-                    noodles in boiling water for 8 to 10 minutes. Drain noodles, and
-                    rinse with cold water. In a mixing bowl, combine ricotta cheese with
-                    egg, remaining parsley, and 1/2 teaspoon salt.
-                  </li>
-                  <li>
-                    Preheat oven to 375 degrees F (190 degrees C). To assemble, spread 1
-                    1/2 cups of meat sauce in the bottom of a 9x13 inch baking dish.
-                    Arrange 6 noodles lengthwise over meat sauce. Spread with one half of
-                    the ricotta cheese mixture. Top with a third of mozzarella cheese
-                    slices. Spoon 1 1/2 cups meat sauce over mozzarella, and sprinkle
-                    with 1/4 cup Parmesan cheese.
-                  </li>
-                  <li>
-                    Repeat layers, and top with remaining mozzarella and Parmesan cheese.
-                    Cover with foil: to prevent sticking, either spray foil with cooking
-                    spray, or make sure the foil does not touch the cheese.
-                  </li>
-                  <li>
-                    Bake in preheated oven for 25 minutes. Remove foil, and bake an
-                    additional 25 minutes. Cool for 15 minutes before serving.
-                  </li>
+                  {recipe.instructions.map((instruction, index) => (
+                    <li key={index} className="text-base leading-relaxed">
+                      {instruction}
+                    </li>
+                  ))}
                 </ol>
               </div>
             </div>
           </div>
 
           {/* Comments Section */}
-          <div className="border-t border-solid border-t-[#333333] pt-10">
+          <div className="border-t border-solid border-t-border-color pt-10" id="comments">
             <div className="flex flex-col gap-6">
-              <h3 className="text-2xl font-bold">Comments (3)</h3>
-              <div className="flex flex-col gap-6">
-                {/* Existing Comments */}
-                <div className="flex gap-4">
-                  <Image
-                    src="https://lh3.googleusercontent.com/aida-public/AB6AXuAKgE3jOuQsqgetitOkiQ7WycL_Jv5aINTcuCgG8sCc7ceecKQgzYNTofQgCZ2zM_b6Okbxq9ozrij3DK_ei61EAuXyRkIdsffSJR4GAw8gIAtWlxftfvqjAuel6aN0LIb3LuR2cLWEr_xEckNF_GNk6QKmNzYWsMU-174s4yzkeAaOdBOpvuDeT0XtP0_v-hGuPaFjLQvqG55otmFfdOu7wyuRpp0SLjXMbOqBEI_pKpAQuJkLtHgRhfgnQOGd9ljd_5oftkQeRIUg"
-                    alt="User avatar"
-                    width={48}
-                    height={48}
-                    className="size-12 rounded-full object-cover"
-                  />
-                  <div className="flex-1">
-                    <div className="flex items-center justify-between">
-                      <p className="font-bold">John Doe</p>
-                      <p className="text-sm text-text-dark-secondary">2 days ago</p>
-                    </div>
-                    <p className="mt-1">
-                      This was amazing! My family loved it. Will definitely make again.
-                    </p>
-                  </div>
-                </div>
-
-                <div className="flex gap-4">
-                  <Image
-                    src="https://lh3.googleusercontent.com/aida-public/AB6AXuD9enpi6WNmJWHCRslVP2xifCmxMrjEy-px70VwwcfmczPPRqaZHsJaN7Mc83pT1u2jKNdy2fx6S_wR2ewoo2BaikqqzpPHqkMrPVmsqjjYVZOu2oUkBnXlHg71m5SuwZBtQ6htnZicuimvsgdPAT9HOdVGilZBL9LEls_ytB5N3fqMuyk3YRtJHprFvFsIQrgcDoyjekQA9BAm7VRJng6BwktIkD9Ye4NLkL9_6IQ6kzApg17IMy7seAicRMolge4M-ktIZRVOgVWW"
-                    alt="User avatar"
-                    width={48}
-                    height={48}
-                    className="size-12 rounded-full object-cover"
-                  />
-                  <div className="flex-1">
-                    <div className="flex items-center justify-between">
-                      <p className="font-bold">Jane Smith</p>
-                      <p className="text-sm text-text-dark-secondary">1 day ago</p>
-                    </div>
-                    <p className="mt-1">
-                      I added a little extra garlic and it turned out great. Thanks for
-                      the recipe!
-                    </p>
-                  </div>
-                </div>
-              </div>
+              <h3 className="text-2xl font-bold">
+                Comments ({comments.length})
+              </h3>
 
               {/* Add Comment */}
-              <div className="flex gap-4 items-start">
-                <div
-                  className="bg-center bg-no-repeat aspect-square bg-cover rounded-full size-12"
-                  style={{
-                    backgroundImage:
-                      'url("https://lh3.googleusercontent.com/aida-public/AB6AXuD54bM9aSkH3rLTmNSuq2WKKq0Wi0zdfBqvGRnFuabfb699Jhcd5MnotxrRRH9Nlr1GnnNgaRzsbsHWU-wk9OwscZzlEaQIcLt-1Sjew7RI21cd7XKKdPitnpPpmCYnihroqL-spb9eOZm4aN7lmJcxK6-UcsvKFjKTQ55_j8V44h257WEkTGCJXN-KCEiJM9Knu_nSkr-2GsCSdmFdVikv8BDo6ekjyxULTzt9Xg26woMArgTRtGrhAoZKB1cvT6iFYP5LAgkULE57")',
-                  }}
-                />
-                <div className="flex-1">
-                  <textarea
-                    className="form-textarea w-full rounded-xl bg-surface-dark border-none focus:ring-primary/50 placeholder:text-text-dark-secondary"
-                    placeholder="Add a comment..."
-                    rows={3}
+              {user ? (
+                <form onSubmit={handleSubmitComment} className="flex gap-4 items-start">
+                  <Image
+                    src={user.avatar || '/default-avatar.jpg'}
+                    alt={user.name}
+                    width={48}
+                    height={48}
+                    className="rounded-full"
                   />
-                  <button className="mt-2 flex min-w-[84px] max-w-[480px] cursor-pointer items-center justify-center overflow-hidden rounded-xl h-10 px-4 bg-primary text-background-dark text-sm font-bold leading-normal tracking-[0.015em]">
-                    <span className="truncate">Post Comment</span>
-                  </button>
+                  <div className="flex-1">
+                    <textarea
+                      value={newComment}
+                      onChange={(e) => setNewComment(e.target.value)}
+                      className="form-textarea w-full rounded-xl bg-surface-dark border-none focus:ring-primary/50 placeholder:text-text-dark-secondary text-text-main"
+                      placeholder="Add a comment..."
+                      rows={3}
+                      disabled={submittingComment}
+                    />
+                    <button
+                      type="submit"
+                      disabled={!newComment.trim() || submittingComment}
+                      className="mt-2 px-4 py-2 rounded-xl bg-primary text-background-dark text-sm font-bold hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      {submittingComment ? 'Posting...' : 'Post Comment'}
+                    </button>
+                  </div>
+                </form>
+              ) : (
+                <div className="text-center py-8 bg-surface-dark rounded-xl">
+                  <p className="text-text-secondary mb-4">Sign in to leave a comment</p>
+                  <Link
+                    href="/auth"
+                    className="inline-block px-6 py-2 rounded-xl bg-primary text-background-dark font-bold hover:bg-primary/90"
+                  >
+                    Sign In
+                  </Link>
                 </div>
+              )}
+
+              {/* Comments List */}
+              <div className="flex flex-col gap-6">
+                {comments.map((comment) => (
+                  <div key={comment.id} className="flex gap-4">
+                    <Image
+                      src={comment.author.avatar || '/default-avatar.jpg'}
+                      alt={comment.author.name}
+                      width={48}
+                      height={48}
+                      className="rounded-full object-cover"
+                    />
+                    <div className="flex-1">
+                      <div className="flex items-center justify-between">
+                        <p className="font-bold">{comment.author.name}</p>
+                        <div className="flex items-center gap-2">
+                          <p className="text-sm text-text-dark-secondary">
+                            {new Date(comment.created_at).toLocaleDateString()}
+                          </p>
+                          {user?.id === comment.author.id && (
+                            <button
+                              onClick={() => handleDeleteComment(comment.id)}
+                              className="text-red-400 hover:text-red-300"
+                            >
+                              <span className="material-symbols-outlined text-lg">delete</span>
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                      <p className="mt-1 text-text-main">{comment.content}</p>
+                    </div>
+                  </div>
+                ))}
               </div>
             </div>
           </div>
